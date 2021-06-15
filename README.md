@@ -38,7 +38,7 @@ Dataset used: ImageNet2012
 
 ## Quick Start
 
-For batch size 4096 (256 x 16), run the following shell:
+For batch size 4096 (256 x 16), run the following code:
 
 ```python
 python -m torch.distributed.launch --master_port 12226 --nproc_per_node=16  main.py --fp16 --batch_size 256  --lr-decay-rate 0.75 --damping 0.35 --lr_init 3.8  --method 'poly' --epoch_end 60 --lr_exponent 6  --warmup_epoch 5 --curvature_momentum 0.9 --datadir /mnt/ILSVRC2012 --logdir your_log_file --decay_epochs 37 --inv-update-freq 1000 
