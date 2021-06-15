@@ -1,3 +1,26 @@
+# An implementation of NG+ optimizer from:
+#
+# NG+ : A Multi-Step Matrix-Product Natural Gradient Method for Deep Learning
+# Minghan Yang, Dong Xu, Qiwen Cui, Zaiwen Wen, Pengxiang Xu
+# Preprint Paper: https://arxiv.org/abs/2106.07454
+# contact: yangminghan at pku.edu.cn, taroxd at pku.edu.cn, wenzw at pku.edu.cn
+
+# Copyright (c) 2021 Minghan Yang, Dong Xu, Qiwen Cui, Zaiwen Wen, Pengxiang Xu
+# All rights reserved.
+# Redistribution and use in source and binary forms, with or without modification, are permitted provided that
+# the following conditions are met:
+# 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the
+#    following disclaimer.
+# 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions
+#    and the following disclaimer in the documentation and/or other materials provided with the distribution.
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+# WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+# PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+# ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+# PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+# OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 import torch
 import torch.nn.functional as F
 
@@ -14,7 +37,7 @@ def _inv_covs( ggt, damping):
     return  iggt
 
 
-def _precond(weight, bias, group, state, tag_sua):
+def _precond(weight, bias, group, state):
     iggt = state['iggt']
     g = weight.grad.data
     s = g.shape
@@ -33,7 +56,7 @@ def _precond(weight, bias, group, state, tag_sua):
     return g, gb
 
 
-def _compute_covs(group, state, x, gy, alpha, tag_sua):
+def _compute_covs(group, state, x, gy, alpha):
     mod = group['mod']
 
     shape_x = x.shape
@@ -47,10 +70,7 @@ def _compute_covs(group, state, x, gy, alpha, tag_sua):
         gy = gy.unsqueeze(2)
     
     if group['layer_type'] == 'Conv2dEx':
-        if tag_sua:
-            x = x.view(x.size(0), x.size(1), -1)
-        else:
-            x = F.unfold(x, mod.kernel_size, padding=mod.padding, stride=mod.stride)
+        x = F.unfold(x, mod.kernel_size, padding=mod.padding, stride=mod.stride)
     else:
         x = x.unsqueeze(2)
     if mod.bias is not None:
@@ -69,20 +89,18 @@ def _compute_covs(group, state, x, gy, alpha, tag_sua):
 
 class NGPlus(torch.optim.Optimizer):
 
-    def __init__(self, net, damping, sua=False, update_freq=1, alpha=1.0,  loss_scaler=None, world_size=1):
-        """ K-FAC Preconditionner for Linear and Conv2d layers.
+    def __init__(self, net, damping, update_freq=1, alpha=1.0, loss_scaler=None, world_size=1):
+        """ NG+ Preconditionner for Linear and Conv2d layers.
         Args:
             net (torch.nn.Module): Network to precondition.
-            damping (float): Tikhonov regularization parameter for the inverses.
-            sua (bool): Applies SUA approximation
+            damping (float): regularization parameter for the inverses.
             update_freq (int): Perform inverses every update_freq updates.
-            alpha (float): Running average parameter.
+            alpha (float): Running average parameter (if == 1, no r. ave.).            
         """
         self.fp16 = loss_scaler is not None
         self.loss_scaler = loss_scaler
         self.world_size = world_size
         self.damping = damping
-        self.sua = sua
         self.update_freq = update_freq
         self.alpha = alpha
         self.params = []
@@ -109,7 +127,7 @@ class NGPlus(torch.optim.Optimizer):
                 x = x.float()
                 gy = gy.float() / self.loss_scaler.get_scale()
             gy = gy * mod.last_output.grad.shape[0]
-            _compute_covs(group, state, x, gy, self.alpha, self.sua)
+            _compute_covs(group, state, x, gy, self.alpha)
             if self.world_size>1:
                 def all_avg(key):
                     state[key] = state[key].contiguous() / self.world_size
@@ -121,12 +139,10 @@ class NGPlus(torch.optim.Optimizer):
 
 
     def step(self):
-        fisher_norm = 0.
         for i, group in enumerate(self.param_groups):
             state = self.state[group['params'][0]]
             if self.iteration_counter % self.update_freq == 0:
                 iggt = _inv_covs(state['ggt'], self.damping)
-                # state['ixxt'] = ixxt.contiguous()
                 state['iggt'] = iggt.contiguous()
         for group in self.param_groups:
             if len(group['params']) == 2:
@@ -135,10 +151,10 @@ class NGPlus(torch.optim.Optimizer):
                 weight = group['params'][0]
                 bias = None
             state = self.state[weight]
-            gw, gb = _precond(weight, bias, group, state, self.sua)
+            gw, gb = _precond(weight, bias, group, state)
             # Updating gradients
             weight.grad.data = gw
             if bias is not None:
                 bias.grad.data = gb
-
+        
         self.iteration_counter += 1

@@ -1,3 +1,21 @@
+"""
+Copyright (c) 2019-2021 Chao Zhang, Dengdong Fan, Zewen Wu, Kai Yang, Pengxiang Xu
+Copyright (c) 2021 Minghan Yang, Dong Xu, Qiwen Cui, Zaiwen Wen, Pengxiang Xu
+All rights reserved.
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that
+the following conditions are met:
+1. Redistributions of source code must retain the above copyright notice, this list of conditions and the
+   following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions
+   and the following disclaimer in the documentation and/or other materials provided with the distribution.
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+"""
 import os
 import shutil
 import argparse
@@ -34,29 +52,29 @@ def get_parser():
     parser.add_argument('--logdir', default='log', type=str, help='where logs go')
     parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
     parser.add_argument('--weight-decay', default=1e-4, type=float, help='weight_decay')
-    parser.add_argument('--lr-decay-rate', default=0.87, type=float)
+    parser.add_argument('--lr-decay-rate', default=0.87, type=float, help='in every epoch, lr *= lr_decay_rate')
     parser.add_argument('--label-smoothing', default=0.1, type=float, help='label smoothing parameter')
-    parser.add_argument('--damping', default=0.05, type=float, help='damping')
+    parser.add_argument('--damping', default=0.05, type=float, help='damping for NG+')
     parser.add_argument('--cov-update-freq', default=500, type=int, help='The frequency to update fisher matrix.')
     parser.add_argument('--inv-update-freq', default=500, type=int, help='The frequency to update inverse fisher matrix')
-    parser.add_argument('--cov-running-average', action='store_true', help='Computes running average for fisher matrix.')
-    parser.add_argument('-j', '--workers', default=8, type=int, metavar='N', help='number of data loading workers (default: 4)')
+    parser.add_argument('-j', '--workers', default=8, type=int, metavar='N', help='number of data loading workers')
     parser.add_argument('--local_rank', default=0, type=int, help='provided by torch.distributed.launch')
     parser.add_argument('--short-epoch', action='store_true', help='make epochs short (for debugging)')
-    parser.add_argument('--sua', action='store_true', help='Use sua approximation')
     parser.add_argument('--print_freq', default=500, type=int, metavar='N', help='log/print every this many steps')
     parser.add_argument('--fp16', action='store_true', help='Run model fp16 mode')
     parser.add_argument('--warmup_epoch', default=0, type=int, help='first k epoch to gradually increase learning rate')
-    parser.add_argument('--lr_warmup', default=0.01, type=float, help='warmup learning rate')
+    parser.add_argument('--lr_warmup', default=0.01, type=float, help='learning rate')
     parser.add_argument('--epoch_end', default=60, type=int)
+    parser.add_argument('--max_epoch', default=48, type=int)
     parser.add_argument('--lr_exponent', default=6, type=float)
     parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
-    parser.add_argument('--method',default='exponent',type=str,choices=['exponent','poly','linear'])
+    parser.add_argument('--method',default='poly',type=str,choices=['exponent','poly'])
     parser.add_argument('--lr_init', default=0.1, type=float, help='learning rate')
     parser.add_argument('--curvature_momentum', default=0.1, type=float, help='curvature_matrix_momentum')
-    parser.add_argument('--batch_size', default=64, type=int, help='the number of data samples per GPUs')
-    parser.add_argument('--decay_epochs', default=100, type=int, help='epoch for decay learning rate')
+    parser.add_argument('--decay_epochs', default=39, type=int)
+    parser.add_argument('--batch_size', default=64, type=int, help='the number of pictures per GPU')
     return parser
+
 
 
 
@@ -119,37 +137,31 @@ class LRScheduler:
         self.lr_epoch_start = None
         self.lr_epoch_end = None
 
+    # def update_lr(self, epoch, ind_batch, batch_tot, lr_init =0.1, lr_warmup=0.01,lr_decay_rate = 0.87,exponent= 6,epoch_end = 55,warmup_epoch = 0,method='poly'):
     def update_lr(self, epoch, ind_batch, batch_tot, warmup_epoch,lr_warmup,lr_init,method,epoch_end,lr_exponent,lr_decay_rate,decay_epoch):
-        phase = self.epoch_to_phase[epoch]
-        # lr0, lr1 = phase['lr']
-        ep0, ep1 = phase['ep']
-        # assert phase['type'] in {'linear','exp'}
-        # if phase['type']=='linear':
-            # self.lr = lr0 + (lr1-lr0) * tmp0
         if epoch < warmup_epoch:
             tmp0 = (epoch  + ind_batch/batch_tot) / (warmup_epoch)
             self.lr = lr_warmup + (lr_init-lr_warmup) * tmp0
-        else: #exp
-            # self.lr = lr0*(lr1/lr0)**tmp0
+        else: 
             if method =='poly':
                 self.lr = lr_init * (1- (epoch -warmup_epoch + ind_batch/batch_tot)/epoch_end)**lr_exponent
             else:
-                self.lr = lr_init * (lr_decay_rate**(epoch  + ind_batch/batch_tot - warmup_epoch))
+                self.lr = lr_init * (lr_decay_rate**(epoch  + ind_batch/batch_tot - warmup_epoch)) + 1e-4
             if epoch > decay_epoch:
                 self.lr  = self.lr/5
 
         for param_group in self.optimizer.param_groups:
             param_group['lr'] = self.lr
         if epoch < warmup_epoch:
-            self.lr_epoch_start = lr_warmup + (lr_init - lr_warmup)*(epoch - ep0) / (ep1 - ep0)
-            self.lr_epoch_end = lr_warmup + (lr_init - lr_warmup)*(epoch + 1 - ep0) / (ep1 - ep0)
+            self.lr_epoch_start = lr_warmup + (lr_init - lr_warmup)*(epoch ) / warmup_epoch
+            self.lr_epoch_end   = lr_warmup + (lr_init - lr_warmup)*(epoch + 1 ) / warmup_epoch
         else:
             if method =='poly':
-                self.lr_epoch_start = lr_init * (1- (epoch + 1 - ep1 )/epoch_end)**lr_exponent
-                self.lr_epoch_end   = lr_init * (1- (epoch - ep1 + 2)/epoch_end)**lr_exponent
+                self.lr_epoch_start = lr_init * (1- (epoch + 1 - warmup_epoch )/epoch_end)**lr_exponent 
+                self.lr_epoch_end   = lr_init * (1- (epoch - warmup_epoch + 2)/epoch_end)**lr_exponent
             else:
-                self.lr_epoch_start = lr_init * (lr_decay_rate**(epoch   - warmup_epoch))
-                self.lr_epoch_end   = lr_init * (lr_decay_rate**(epoch  + 1 - warmup_epoch))
+                self.lr_epoch_start = lr_init * (lr_decay_rate**(epoch  + 1 - warmup_epoch))
+                self.lr_epoch_end   = lr_init * (lr_decay_rate**(epoch  + 2 - warmup_epoch))
 
 
 def my_topk(logits, label, topk=(1,)):

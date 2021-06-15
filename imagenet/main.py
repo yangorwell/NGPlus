@@ -1,3 +1,21 @@
+"""
+Copyright (c) 2019-2021 Chao Zhang, Dengdong Fan, Zewen Wu, Kai Yang, Pengxiang Xu
+Copyright (c) 2021 Minghan Yang, Dong Xu, Qiwen Cui, Zaiwen Wen, Pengxiang Xu
+All rights reserved.
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that
+the following conditions are met:
+1. Redistributions of source code must retain the above copyright notice, this list of conditions and the
+   following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions
+   and the following disclaimer in the documentation and/or other materials provided with the distribution.
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+"""
 import os
 import datetime
 import numpy as np
@@ -6,20 +24,37 @@ import torchvision
 
 torch.backends.cudnn.benchmark = True
 
-from resnet import resnet50
+from resnet_ngplus import resnet50
 from NGPlus import NGPlus
 from utils import MPIEnv, get_parser, check_phase, save_file_for_reproduce
 from utils import LabelSmoothingLoss, LRScheduler, my_topk, sum_tensor
 from logging_utils import TensorboardLogger, FileLogger, TimeMeter, AverageMeter, NoOp
 import data_manager
 
-SAVE_LIST = [os.path.abspath(__file__), 'NGPlus.py', 'resnet.py',
-        'logging_utils.py', 'utils.py', 'data_manager.py', 'dali_pipe.py']
+SAVE_LIST = [os.path.abspath(__file__), 'NGPlus.py', 'main.py','utils.py', 'resnet_ngplus.py',
+        'logging_utils.py',  'data_manager.py', 'dali_pipe.py']
 
 def adjust_param(preconditioner, epoch, args):
     damping = args.damping * (args.lr_decay_rate**(epoch / 10))
     preconditioner.damping = damping
-   
+
+def split_weights(net):
+    decay = []
+    no_decay = []
+    for m in net.modules():
+        if isinstance(m, torch.nn.Conv2d) or isinstance(m, torch.nn.Linear):
+            decay.append(m.weight)
+            if m.bias is not None:
+                no_decay.append(m.bias)
+        else:
+            if hasattr(m, 'weight'):
+                no_decay.append(m.weight)
+            if hasattr(m, 'bias'):
+                no_decay.append(m.bias)
+    assert len(list(net.parameters())) == len(decay) + len(no_decay)
+    # print(len(no_decay))
+    ret = [{'params':decay}, {'params':no_decay, 'weight_decay':0}]
+    return ret
 
 def train(train_loader):
     timer = TimeMeter()
@@ -53,11 +88,17 @@ def train(train_loader):
             loss_scaler.update()
         else:
             predict_i = net(data_i)
+            if preconditioner.iteration_counter % args.cov_update_freq == 0:
+                with torch.no_grad():
+                    sampled_targets = torch.multinomial(torch.softmax(predict_i.detach(), dim=1),1).squeeze()
+                    sample_loss = criterion(predict_i, sampled_targets)
+                    optimizer.zero_grad()
+                    sample_loss.backward(retain_graph=True)
+                    preconditioner.compute_all_covs()
+
             loss = criterion(predict_i, label_i)
             optimizer.zero_grad()
             loss.backward()
-            if preconditioner.iteration_counter % args.cov_update_freq == 0:
-                preconditioner.compute_all_covs()
             preconditioner.step()
             optimizer.step()
 
@@ -146,13 +187,10 @@ if __name__ == '__main__':
     args = get_parser().parse_args()
     lr = 0.1
     lr_phase = [
-#        {'ep':(0,5), 'lr':(args.lr_warmup,args.lr), 'type':'linear'}, # lr warmup is better with --init-bn0
-        {'ep':(0,48), 'lr':(args.lr,lr/10), 'type':'exp'}, # trying one cycle
-        # {'ep':(15,25), 'lr':(lr/10,lr/100), 'type':'exp'},
-        # {'ep':(25,35), 'lr':(lr/100,lr/1000), 'type':'exp'},
+        {'ep':(0,args.max_epoch), 'lr':(args.lr,lr/10), 'type':'exp'},
     ]
     dl_phase = [
-        {'ep':0, 'sz':224, 'bs':args.batch_size, 'val_bs':256, 'min_scale':0.087},
+        {'ep':0, 'sz':224, 'bs':256, 'val_bs':256, 'min_scale':0.087},
     ]
     args.lr_phase, args.dl_phase = check_phase(lr_phase, dl_phase)
     args.mpi = MPIEnv()
@@ -185,13 +223,11 @@ if __name__ == '__main__':
         criterion = LabelSmoothingLoss(args.label_smoothing)
     else:
         criterion = torch.nn.CrossEntropyLoss()
-    optimizer = torch.optim.SGD(net.parameters(), lr=args.lr_phase[0]['lr'][0],
+    optimizer = torch.optim.SGD(split_weights(net), lr=args.lr_phase[0]['lr'][0],
                 momentum=args.momentum, weight_decay=args.weight_decay)
     
     preconditioner = NGPlus(net, args.damping, update_freq=args.inv_update_freq,
-            alpha=args.curvature_momentum, sua=args.sua, 
-            world_size=args.mpi.world_size, loss_scaler=loss_scaler)
-    
+            alpha=args.curvature_momentum, world_size=args.mpi.world_size, loss_scaler=loss_scaler)
     dm = data_manager.DataManager(phases=args.dl_phase, ilsvrc_root=args.datadir, workers=args.workers,
             use_dali=True, fp16=args.fp16, world_size=args.mpi.world_size, rank=args.mpi.rank,
             local_rank=args.mpi.local_rank)
