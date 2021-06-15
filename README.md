@@ -54,3 +54,11 @@ python -m torch.distributed.launch --master_port 12226 --nproc_per_node=16  main
 - nvidia_dali_utils2.py: Utilities about DALI.
 - resnet_ngplus.py: The definition of resnet50 model.
 - utils.py: Miscellaneous utilities.
+
+### Contact 
+
+We hope that the package is useful for your application. If you have any bug reports or comments, please feel free to email one of the toolbox authors:
+
+- Minghan Yang, yangminghan at pku.edu.cn
+- Dong Xu, taroxd at pku.edu.cn
+- Zaiwen Wen, wenzw at pku.edu.cn
