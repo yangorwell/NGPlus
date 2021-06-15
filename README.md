@@ -1,10 +1,8 @@
-# 2nd-Order-Opt
-
 # ResNet-50-NG+ Example
 
 ## Description
 
-This is an example of training ResNet-50 V1.5 with ImageNet2012 dataset by second-order optimizer NG+. NG+ is a novel approximate seond-order optimization method. With fewer iterations, SENG can finish ResNet-50 V1.5 training within 40 epochs to top-1 accuracy of 75.9% using 4 Tesla V100 GPUs, which is much faster than SGD with Momentum.
+This is an example of training ResNet-50 V1.5 with ImageNet2012 dataset by second-order optimizer NG+. NG+ is a novel approximate seond-order optimization method. With fewer iterations, NG+ can finish ResNet-50 V1.5 training within **40 epochs to top-1 accuracy of 75.9% using 16 Tesla V100 GPUs with batch size 4,096**.
 
 ## Model Architecture
 
@@ -40,8 +38,10 @@ Dataset used: ImageNet2012
 
 ## Quick Start
 
+For batch size 4096 (256 x 16), run the following shell:
+
 ```python
-python -m torch.distributed.launch --master_port 12111 --nproc_per_node=4 main_ngplus.py --fp16   --logdir your_log_file  --lr-decay-rate 0.8 --lr_exponent=5.0 --epoch_end 52 --curvature_momentum 0.99 --damping 0.16 --lr_init 0.18  --warmup_epoch 5 --batch_size 64 --datadir your_data_dir
+python -m torch.distributed.launch --master_port 12226 --nproc_per_node=16  main.py --fp16 --batch_size 256  --lr-decay-rate 0.75 --damping 0.35 --lr_init 3.8  --method 'poly' --epoch_end 60 --lr_exponent 6  --warmup_epoch 5 --curvature_momentum 0.9 --datadir /mnt/ILSVRC2012 --logdir your_log_file --decay_epochs 37 --inv-update-freq 1000 
 ```
 
 ### Code Structure
@@ -50,7 +50,7 @@ python -m torch.distributed.launch --master_port 12111 --nproc_per_node=4 main_n
 - dali_pipe.py: A wrapper over DALI.
 - data_manager.py: Utilities about loading datasets.
 - logging_utils.py: Utilities about logging.
-- main_ngplus.py: The main script for training.
+- main.py: The main script for training.
 - nvidia_dali_utils2.py: Utilities about DALI.
-- resnet.py: The definition of resnet50 model.
+- resnet_ngplus.py: The definition of resnet50 model.
 - utils.py: Miscellaneous utilities.
