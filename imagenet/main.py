@@ -88,17 +88,11 @@ def train(train_loader):
             loss_scaler.update()
         else:
             predict_i = net(data_i)
-            if preconditioner.iteration_counter % args.cov_update_freq == 0:
-                with torch.no_grad():
-                    sampled_targets = torch.multinomial(torch.softmax(predict_i.detach(), dim=1),1).squeeze()
-                    sample_loss = criterion(predict_i, sampled_targets)
-                    optimizer.zero_grad()
-                    sample_loss.backward(retain_graph=True)
-                    preconditioner.compute_all_covs()
-
             loss = criterion(predict_i, label_i)
             optimizer.zero_grad()
             loss.backward()
+            if preconditioner.iteration_counter % args.cov_update_freq == 0:
+                preconditioner.compute_all_covs()
             preconditioner.step()
             optimizer.step()
 
