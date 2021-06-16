@@ -1,8 +1,10 @@
+## NG+ 
+
+NG+ is a multi-step matrix-product natural gradient method for deep learning. 
+
 ## Implementation of NG+ for ImageNet1K with PyTorch
 
-## Description
-
-This is an example of training ResNet-50 V1.5 with ImageNet1K  (ILSVRC2012) dataset by second-order optimizer NG+. NG+ is a novel approximate seond-order optimization method. With fewer iterations, NG+ can finish ResNet-50 V1.5 training within **40 epochs to top-1 accuracy of 75.9% using 16 Tesla V100 GPUs with batch size 4,096**.
+This is an example of training ResNet-50 V1.5 on the ImageNet1K  (ILSVRC2012) dataset. NG+ can finish the training within **40 epochs to top-1 accuracy of 75.9% using 16 Tesla V100 GPUs with batch size 4,096**.
 
 ## Model Architecture
 
