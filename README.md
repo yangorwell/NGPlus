@@ -43,5 +43,5 @@ We hope that the package is useful for your application. If you have any bug rep
 
 ## Reference
 
-NG+ : A Multi-Step Matrix-Product Natural Gradient Method for Deep Learning  https://arxiv.org/abs/2106.07454
+Minghan Yang, Dong Xu, Qiwen Cui, Zaiwen Wen, Pengxiang Xu, NG+ : A Multi-Step Matrix-Product Natural Gradient Method for Deep Learning,  https://arxiv.org/abs/2106.07454
 
