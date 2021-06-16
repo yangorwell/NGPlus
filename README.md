@@ -1,40 +1,16 @@
-## ResNet-50-NG+ Example
+## Implementation of NG+ for ImageNet1K with PyTorch
 
 ## Description
 
-This is an example of training ResNet-50 V1.5 with ImageNet2012 dataset by second-order optimizer NG+. NG+ is a novel approximate seond-order optimization method. With fewer iterations, NG+ can finish ResNet-50 V1.5 training within **40 epochs to top-1 accuracy of 75.9% using 16 Tesla V100 GPUs with batch size 4,096**.
+This is an example of training ResNet-50 V1.5 with ImageNet1K  (ILSVRC2012) dataset by second-order optimizer NG+. NG+ is a novel approximate seond-order optimization method. With fewer iterations, NG+ can finish ResNet-50 V1.5 training within **40 epochs to top-1 accuracy of 75.9% using 16 Tesla V100 GPUs with batch size 4,096**.
 
 ## Model Architecture
 
 The overall network architecture of ResNet-50 is show below:[link](https://arxiv.org/pdf/1512.03385.pdf)
 
-## Dataset
-
-Dataset used: ImageNet2012
-
-- Dataset size 224*224 colorful images in 1000 classes
-    - Train：1,281,167 images  
-    - Test： 50,000 images
-- Data format：jpeg
-    - Note：Data will be processed in dataset.py
-
-- Download the dataset ImageNet2012
-
-> Unzip the ImageNet2012 dataset to any path you want and the folder structure should include train and eval dataset as follows:
-
-```shell
-    ├── train           # train dataset
-    └── val             # infer dataset
-```
-
 ## Environment Requirements
 
-- Hardware（GPU）
-    - Prepare hardware environment with GPU processors.
-- Framework
-    - pytorch (>= 1.5)
-    - tensorboardX
-    - [NVIDIA DALI](https://developer.nvidia.com/dali)
+python 3.8, pytorch (>= 1.5.0), tensorboardX, [NVIDIA DALI](https://developer.nvidia.com/dali), CUDA, CUDNN, and NCCL.
 
 ## Quick Start
 
@@ -62,3 +38,8 @@ We hope that the package is useful for your application. If you have any bug rep
 - Minghan Yang, yangminghan at pku.edu.cn
 - Dong Xu, taroxd at pku.edu.cn
 - Zaiwen Wen, wenzw at pku.edu.cn
+
+## Reference
+
+NG+ : A Multi-Step Matrix-Product Natural Gradient Method for Deep Learning  https://arxiv.org/abs/2106.07454
+
