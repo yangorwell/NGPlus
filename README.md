@@ -8,7 +8,7 @@ This is an example of training ResNet-50 V1.5 on the ImageNet1K  (ILSVRC2012) da
 
 ## Model Architecture
 
-The overall network architecture of ResNet-50 is show below:[link](https://arxiv.org/pdf/1512.03385.pdf)
+The overall network architecture of ResNet-50 is shown below: [link](https://arxiv.org/pdf/1512.03385.pdf)
 
 ## Environment Requirements
 
