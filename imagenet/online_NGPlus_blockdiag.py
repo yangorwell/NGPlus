@@ -146,7 +146,8 @@ class o_NGPlus(Optimizer):
                         block_diag_update_MatFisher(state,dw,alpha,block_size,row_last,dim)
                         # state['MatFisher'].addmm_(mat1=dw, mat2=dw.t(), beta=alpha, alpha=(1.0-alpha))
                     else:
-                        state['MatFisher'].mul_(alpha).add_(compute_block_diagonal(dw),alpha=(1.0-alpha))
+                        # state['MatFisher'].mul_(alpha).add_(compute_block_diagonal(dw),alpha=(1.0-alpha))
+                        state['MatFisher'].addmm_(mat1=dw, mat2=dw.t(), beta=alpha, alpha=(1.0-alpha))
 
                 if state['step'] % group['update_freq'] == 0 and weight_decay >= 0:                   
                     MatFisher = state['MatFisher']
