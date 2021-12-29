@@ -82,7 +82,7 @@ def _diag_add(mat_in, diag_elem, inplace=False):
 
 class o_NGPlus(Optimizer):
 
-    def __init__(self, params, lr=1e-1, alpha=0.99, momentum=0.9, damping=0.001, weight_decay=0, update_freq=1, epsilon=1e-8,cov_update_freq=10,block_diag=False):
+    def __init__(self, params, lr=1e-1, alpha=0.99, momentum=0.9, damping=0.001, weight_decay=0, update_freq=1, epsilon=1e-8,cov_update_freq=100,block_diag=True):
         defaults = dict(lr=lr, momentum=momentum, damping=damping,
                 weight_decay=weight_decay, update_freq=update_freq,cov_update_freq=cov_update_freq, alpha=alpha, epsilon=epsilon,block_diag=block_diag)
         super(o_NGPlus, self).__init__(params, defaults)
