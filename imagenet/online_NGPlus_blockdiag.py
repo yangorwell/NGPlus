@@ -150,11 +150,11 @@ class o_NGPlus(Optimizer):
                         state['MatFisher'].addmm_(mat1=dw, mat2=dw.t(), beta=alpha, alpha=(1.0-alpha))
 
                 if state['step'] % group['update_freq'] == 0 and weight_decay >= 0:                   
-                    MatFisher = state['MatFisher']
                     # corr_inv = 1 / (1 - alpha ** (state['step']/2+1)) 
                     if block_flag:
                         block_diag_update_InvMatFisher(state,damping,block_size,row_last,dim)
                     else:
+                        MatFisher = state['MatFisher']
                         state['InvMatFisher'] = _diag_add(MatFisher, (min(damping,max(torch.max(torch.abs(MatFisher)),1e-3) ))**0.5).inverse().contiguous()
 
                 if weight_decay >= 0:   
