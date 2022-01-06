@@ -21,6 +21,28 @@
 # CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.RWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+'''
+Useage:
+
+from online_NGPlus_block import create_oNG_optimizer
+
+... # other codes
+
+preconditioner = create_oNG_optimizer(net,**your_params)
+optimier = base_optimizer(net.parameters(),**hyper_params)
+
+
+for inputs, targets in trainloader:
+   output = net(inputs)
+   loss = criterion(outputs, targets)
+   optimizer.zero_grad()
+   loss.backward()
+
+   preconditioner.step()
+   optimizer.step()
+
+
+'''
 
 import torch
 from torch.optim.optimizer import Optimizer
