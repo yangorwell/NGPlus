@@ -24,7 +24,7 @@
 
 import torch
 from torch.optim.optimizer import Optimizer
-
+from param_utils import get_norm_parameters, get_common_parameters, get_norm_bias_parameters
 def compute_block_diagonal(mat):
     row = mat.size()[0]
     b_row = row % 128
@@ -84,16 +84,15 @@ class o_NGPlus(Optimizer):
 
     def __init__(self, params, lr=1e-1, alpha=0.99, momentum=0.9, damping=0.001, weight_decay=0, update_freq=1, epsilon=1e-8,cov_update_freq=100,block_diag=True):
         defaults = dict(lr=lr, momentum=momentum, damping=damping,
-                weight_decay=weight_decay, update_freq=update_freq,cov_update_freq=cov_update_freq, alpha=alpha, epsilon=epsilon,block_diag=block_diag)
+                weight_decay=weight_decay, update_freq=update_freq,cov_update_freq=cov_update_freq, alpha=alpha, epsilon=epsilon,block_diag=block_diag,oNG=True)
         super(o_NGPlus, self).__init__(params, defaults)
-
+    
     @torch.no_grad()
     def step(self, closure=None):
         loss = None
         if closure is not None:
             with torch.enable_grad():
                 loss = closure()
-
         for group in self.param_groups:
             for p in group["params"]:
                 if p.grad is None:
@@ -108,20 +107,20 @@ class o_NGPlus(Optimizer):
                 weight_decay = group['weight_decay']
                 epsilon = group['epsilon']
                 block_diag = group['block_diag']
-
+                oNG = group['oNG']
 
                 block_size = 1024
                 dim = grad.size(0)
                 row_last = dim%block_size
                 partition_num = dim // block_size
                 block_flag = block_diag and dim > block_size
-
+            
                 if len(state) == 0:
                     state['step'] = 0
                     if momentum > 0:
                         state["momentum_buffer"] = grad.clone().detach()
                     
-                    if weight_decay >= 0:
+                    if oNG:
                         if block_flag:
                             state['MatFisher'] = [torch.empty([partition_num,block_size,block_size])]
                             for block in range(partition_num):
@@ -141,7 +140,7 @@ class o_NGPlus(Optimizer):
                     grad = state['momentum_buffer']
                 
                 dw = grad.view(grad.size(0),-1)
-                if state['step'] % group['cov_update_freq'] == 0 and weight_decay >= 0:
+                if state['step'] % group['cov_update_freq'] == 0 and oNG:
                     if block_flag:
                         block_diag_update_MatFisher(state,dw,alpha,block_size,row_last,dim)
                         # state['MatFisher'].addmm_(mat1=dw, mat2=dw.t(), beta=alpha, alpha=(1.0-alpha))
@@ -149,24 +148,49 @@ class o_NGPlus(Optimizer):
                         # state['MatFisher'].mul_(alpha).add_(compute_block_diagonal(dw),alpha=(1.0-alpha))
                         state['MatFisher'].addmm_(mat1=dw, mat2=dw.t(), beta=alpha, alpha=(1.0-alpha))
 
-                if state['step'] % group['update_freq'] == 0 and weight_decay >= 0:                   
-                    # corr_inv = 1 / (1 - alpha ** (state['step']/2+1)) 
+                if state['step'] % group['update_freq'] == 0 and oNG:                    
                     if block_flag:
                         block_diag_update_InvMatFisher(state,damping,block_size,row_last,dim)
                     else:
                         MatFisher = state['MatFisher']
                         state['InvMatFisher'] = _diag_add(MatFisher, (min(damping,max(torch.max(torch.abs(MatFisher)),1e-3) ))**0.5).inverse().contiguous()
 
-                if weight_decay >= 0:   
+                if oNG:   
                     if block_flag: 
                         dw = block_diag_update_Precond(state,dw,block_size,row_last,dim)
                     else:
                         InvMatFisher = state['InvMatFisher']
                     # print(state['step'],InvMatFisher.size())
                         dw = torch.mm(InvMatFisher,dw)
-
-                    grad = dw.contiguous().view(*g_shape)
+                grad = dw.contiguous().view(*g_shape)
                 state['step'] += 1
                 p.add_(grad, alpha=-group['lr'])
-
+                # p.grad.data = grad
         return loss
+
+
+def create_oNG_optimizer(model, lr,weight_decay=0, alpha=0.99, momentum=0.9,
+    damping=0.001, update_freq=1, epsilon=1e-8,cov_update_freq=100,
+    block_diag=True,exclude_layers=['bn', 'ln', 'bias'], bias_correction=False):
+    # can only exclude BatchNorm, LayerNorm, bias layers
+    # ['bn', 'ln'] will exclude BatchNorm, LayerNorm layers
+    # ['bn', 'ln', 'bias'] will exclude BatchNorm, LayerNorm, bias layers
+    # [] will not exclude any layers
+    if 'bias' in exclude_layers:
+        params = [
+            dict(params=get_common_parameters(
+                model, exclude_func=get_norm_bias_parameters),oNG=True),
+            dict(params=get_norm_bias_parameters(model), weight_decay=0,oNG=False)
+        ]
+    elif len(exclude_layers) > 0:
+        params = [
+            dict(params=get_common_parameters(
+                model, exclude_func=get_norm_parameters),oNG=True),
+            dict(params=get_norm_parameters(model), weight_decay=0,oNG=False)
+        ]
+    else:
+        params = model.parameters()
+    optimizer = o_NGPlus(params, lr,  weight_decay=weight_decay,alpha=alpha,
+        momentum=momentum,damping=damping,update_freq=update_freq,epsilon=epsilon,
+        cov_update_freq=cov_update_freq,block_diag=block_diag)
+    return optimizer
