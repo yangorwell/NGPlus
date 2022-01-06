@@ -1,6 +1,11 @@
 """
     Functions which help to skip bias and BatchNorm
 """
+
+import torch
+from torch.optim.optimizer import Optimizer
+from typing import Dict, Iterable, Optional, Callable, Tuple
+from torch import nn
 BN_CLS = (nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d)
 
 
