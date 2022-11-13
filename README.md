@@ -43,5 +43,5 @@ We hope that the package is useful for your application. If you have any bug rep
 
 ## Reference
 
-Minghan Yang, Dong Xu, Qiwen Cui, Zaiwen Wen, Pengxiang Xu, NG+ : A Multi-Step Matrix-Product Natural Gradient Method for Deep Learning,  https://arxiv.org/abs/2106.07454
+Minghan Yang, Dong Xu, Qiwen Cui, Zaiwen Wen, Pengxiang Xu, An Efficient Fisher Matrix Approximation Method for Large-Scale Neural Network Optimization. IEEE Transactions on Pattern Analysis and Machine Intelligence, 2022.
 
